@@ -1,5 +1,6 @@
 package com.example.studyolle.domain;
 
+import com.example.studyolle.settings.Profile;
 import lombok.*;
 
 import javax.persistence.*;
@@ -70,4 +71,5 @@ public class Account {
     public boolean canSendConfirmEmail() {
         return this.emailCheckTokenGeneratedAt.isBefore(LocalDateTime.now().minusHours(1));
     }
+
 }
