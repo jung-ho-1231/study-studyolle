@@ -2,27 +2,51 @@ package com.example.studyolle.settings;
 
 import com.example.studyolle.account.AccountService;
 import com.example.studyolle.account.CurrentUser;
+import com.example.studyolle.config.Notifications;
 import com.example.studyolle.domain.Account;
+import com.example.studyolle.domain.Tag;
+import com.example.studyolle.tag.TagRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.Errors;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.InitBinder;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import javax.validation.Valid;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Controller
 @RequiredArgsConstructor
 public class SettingController {
 
     private final AccountService accountService;
+    private final ModelMapper modelMapper;
+    private final NicknameValidator nicknameValidator;
+    private final TagRepository tagRepository;
 
+    private final ObjectMapper objectMapper;
     @InitBinder("passwordForm")
     public void initBinder(WebDataBinder webDataBinder) {
         webDataBinder.addValidators(new PasswordFormValidator());
+    }
+
+    @InitBinder("nicknameForm")
+    public void nicknameFormInitBinder(WebDataBinder webDataBinder) {
+        webDataBinder.addValidators(nicknameValidator);
     }
 
     @GetMapping("/settings/profile")
@@ -46,7 +70,7 @@ public class SettingController {
     }
 
     @GetMapping("/settings/password")
-    public String updateAccountForm(@CurrentUser Account account, Model model) {
+    public String updatePasswordForm(@CurrentUser Account account, Model model) {
         model.addAttribute(account);
         model.addAttribute(new PasswordForm());
         return "settings/password";
@@ -63,4 +87,86 @@ public class SettingController {
         attributes.addFlashAttribute("message", "비밀번호가 변경되었습니다.");
         return "redirect:/settings/password";
     }
+
+
+    @GetMapping("/setting/notifications")
+    public String updateNotificationsForm(@CurrentUser Account account, Model model) {
+        model.addAttribute(account);
+        model.addAttribute(modelMapper.map(account, Notifications.class));
+        return "settings/notifications";
+    }
+
+    @PostMapping("/notifications")
+    public String updateNotifications(@CurrentUser Account account, @Valid Notifications notifications, Errors errors,
+                                      Model model, RedirectAttributes attributes) {
+        if (errors.hasErrors()) {
+            model.addAttribute(account);
+            return "settings/notifications";
+        }
+
+        accountService.updateNotifications(account, notifications);
+        attributes.addFlashAttribute("message", "알림 설정을 변경했습니다.");
+        return "redirect:/settings/notifications";
+    }
+
+
+    @GetMapping("/settings/account")
+    public String updateAccountForm(@CurrentUser Account account, Model model) {
+        model.addAttribute(account);
+        model.addAttribute(modelMapper.map(account, NicknameForm.class));
+        return "settings/account";
+    }
+
+    @PostMapping("/settings/account")
+    public String updateAccount(@CurrentUser Account account, @Valid NicknameForm nicknameForm, Errors errors, Model model, RedirectAttributes attributes) {
+        if (errors.hasErrors()) {
+            model.addAttribute(account);
+            return "settings/account";
+        }
+
+        accountService.updateNickname(account, nicknameForm.getNickname());
+        attributes.addFlashAttribute("message", "닉네임을 변경했습니다.");
+        return "redirect:/settings/account";
+    }
+
+    @GetMapping("/settings/tags")
+    public String updateTags(@CurrentUser Account account, Model model) throws JsonProcessingException {
+        model.addAttribute(account);
+        Set<Tag> tags = accountService.getTags(account);
+        model.addAttribute("tags", tags.stream().map(Tag::getTitle).collect(Collectors.toList()));
+
+        List<String> allTags = tagRepository.findAll().stream().map(Tag::getTitle).collect(Collectors.toList());
+        model.addAttribute("whitelist", objectMapper.writeValueAsString(allTags));
+
+        return "settings/tags";
+    }
+
+    @PostMapping("/settings/tags/add")
+    @ResponseBody
+    public ResponseEntity addTags(@CurrentUser Account account, String tagTitle, Model model) {
+        Tag findTag = tagRepository.findByTitle(tagTitle);
+
+        if (findTag == null) {
+            findTag = tagRepository.save(Tag.builder().title(tagTitle).build());
+        }
+
+        accountService.addTag(account, findTag);
+
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/settings/tags/remove")
+    @ResponseBody
+    public ResponseEntity removeTags(@CurrentUser Account account, String tagTitle, Model model) {
+        Tag findTag = tagRepository.findByTitle(tagTitle);
+
+        if (findTag == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        accountService.removeTag(account, findTag);
+
+        return ResponseEntity.ok().build();
+    }
+
 }

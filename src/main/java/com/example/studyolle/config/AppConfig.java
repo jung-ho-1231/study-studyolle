@@ -1,5 +1,7 @@
 package com.example.studyolle.config;
 
+import org.modelmapper.ModelMapper;
+import org.modelmapper.convention.NameTokenizers;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
@@ -12,4 +14,17 @@ public class AppConfig {
     public PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
     }
+
+    @Bean
+    public ModelMapper modelMapper() {
+
+        ModelMapper modelMapper = new ModelMapper();
+
+        modelMapper.getConfiguration()
+                .setDestinationNameTokenizer(NameTokenizers.CAMEL_CASE)
+                .setSourceNameTokenizer(NameTokenizers.UNDERSCORE);
+
+        return modelMapper;
+    }
+
 }
