@@ -5,10 +5,13 @@ import com.example.studyolle.account.CurrentUser;
 import com.example.studyolle.config.Notifications;
 import com.example.studyolle.domain.Account;
 import com.example.studyolle.domain.Tag;
+import com.example.studyolle.domain.Zone;
 import com.example.studyolle.tag.TagRepository;
+import com.example.studyolle.zone.ZoneRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.apache.coyote.Response;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -17,17 +20,14 @@ import org.springframework.validation.BindingResult;
 import org.springframework.validation.Errors;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.WebDataBinder;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.InitBinder;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import javax.validation.Valid;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Controller
 @RequiredArgsConstructor
@@ -37,8 +37,10 @@ public class SettingController {
     private final ModelMapper modelMapper;
     private final NicknameValidator nicknameValidator;
     private final TagRepository tagRepository;
-
     private final ObjectMapper objectMapper;
+    private  final TagService tagService;
+
+    private  final ZoneRepository zoneRepository;
     @InitBinder("passwordForm")
     public void initBinder(WebDataBinder webDataBinder) {
         webDataBinder.addValidators(new PasswordFormValidator());
@@ -89,14 +91,14 @@ public class SettingController {
     }
 
 
-    @GetMapping("/setting/notifications")
+    @GetMapping("/settings/notifications")
     public String updateNotificationsForm(@CurrentUser Account account, Model model) {
         model.addAttribute(account);
         model.addAttribute(modelMapper.map(account, Notifications.class));
         return "settings/notifications";
     }
 
-    @PostMapping("/notifications")
+    @PostMapping("/settings/notifications")
     public String updateNotifications(@CurrentUser Account account, @Valid Notifications notifications, Errors errors,
                                       Model model, RedirectAttributes attributes) {
         if (errors.hasErrors()) {
@@ -143,30 +145,55 @@ public class SettingController {
 
     @PostMapping("/settings/tags/add")
     @ResponseBody
-    public ResponseEntity addTags(@CurrentUser Account account, String tagTitle, Model model) {
-        Tag findTag = tagRepository.findByTitle(tagTitle);
-
-        if (findTag == null) {
-            findTag = tagRepository.save(Tag.builder().title(tagTitle).build());
-        }
-
-        accountService.addTag(account, findTag);
+    public ResponseEntity addTags(@CurrentUser Account account, @RequestBody TagForm tagForm) {
+        Tag tag = tagService.findOrCreateNew(tagForm.getTagTitle());
+        accountService.addTag(account, tag);
 
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/settings/tags/remove")
     @ResponseBody
-    public ResponseEntity removeTags(@CurrentUser Account account, String tagTitle, Model model) {
-        Tag findTag = tagRepository.findByTitle(tagTitle);
+    public ResponseEntity removeTags(@CurrentUser Account account, @RequestBody TagForm tagForm) {
+        Tag findTag = tagRepository.findByTitle(tagForm.getTagTitle());
 
         if (findTag == null) {
             return ResponseEntity.badRequest().build();
         }
 
         accountService.removeTag(account, findTag);
-
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/settings/zones")
+    public String updateZonesForm(@CurrentUser Account account, Model model) throws JsonProcessingException {
+        model.addAttribute(account);
+
+        Set<Zone> zones = accountService.getZones(account);
+        model.addAttribute("zones", zones.stream().map(Zone::toString).collect(Collectors.toList()));
+
+        List<String> allZones = zoneRepository.findAll().stream().map(Zone::toString).collect(Collectors.toList());
+        model.addAttribute("whitelist",objectMapper.writeValueAsString(allZones));
+        return "settings/zones";
+    }
+
+    @GetMapping("/settings//zones/add")
+    public ResponseEntity addZone(@CurrentUser Account account, @RequestBody ZoneForm zoneForm) {
+        Zone zone = zoneRepository.findByCityAndProvince(zoneForm.getCityName(), zoneForm.getProvinceName());
+        if (zone == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        accountService.addZone(account, zone);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/settings/zones/remove")
+    public ResponseEntity removeZone(@CurrentUser Account account, @RequestBody ZoneForm zoneForm) {
+        Zone zone = zoneRepository.findByCityAndProvince(zoneForm.getCityName(), zoneForm.getProvinceName());
+        if (zone == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        accountService.removeZone(account, zone);
+        return ResponseEntity.ok().build();
+    }
 }
